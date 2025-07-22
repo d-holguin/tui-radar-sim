@@ -49,13 +49,6 @@ loop {
 
 The radar sweeps around and detects different types of objects (aircraft, ships, etc) that move around and fade out over time or are removed if out of range
 
-## Controls
-- `q` or `Esc` to quit
-
-## Running
-```bash
-cargo run
-```
 
 ## Why threads instead of async?
 I just wanted to see how it felt compared to tokio. For a simple TUI like this, threads are actually pretty nice, no async complexity and the performance is fine.
