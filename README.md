@@ -11,7 +11,7 @@ The threadpool isn't being used at all and was just something left over, but clo
 ## How it works
 The program runs on two threads.
 An input thread handles user events; while it could all run on a single thread, splitting input off makes everything smoother once more keys or events are involved.
-Rendering and tick/update logic both run at fixed rates in the main thread — typically 30 FPS (frames per second) and 15 TPS (ticks per second).
+Rendering and tick/update logic both run at fixed rates in the main thread, typically 30 FPS (frames per second) and 15 TPS (ticks per second).
 There is a small sleep at the end of the main loop to yield back control to the OS so the loop isn't needlessly run. 
 I'm using an Elm style Model–Update–View (MUV) pattern, All the state lives in `Model`,
 events are sent as `Message`s to an `Update()` function that mutates the `Model` which is rendered by `View()`
