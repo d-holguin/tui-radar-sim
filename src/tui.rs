@@ -1,6 +1,5 @@
 use crate::fps_counter::FpsCounter;
 use crate::radar::RadarWidget;
-use crate::threadpool::ThreadPool;
 use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
@@ -44,7 +43,6 @@ pub struct Tui {
     pub tick_rate: f64,
     pub msg_tx: mpsc::Sender<Message>,
     pub msg_rx: mpsc::Receiver<Message>,
-    pub thread_pool: ThreadPool,
     pub model: Model,
 }
 
@@ -75,7 +73,6 @@ impl Tui {
             tick_rate,
             msg_tx,
             msg_rx,
-            thread_pool: ThreadPool::new(4)?,
             model: Model {
                 fps_counter: FpsCounter::new(),
                 radar,
@@ -109,63 +106,59 @@ impl Tui {
         let tick_duration = Duration::from_secs_f64(1.0 / self.tick_rate);
         let frame_duration = Duration::from_secs_f64(1.0 / self.frame_rate);
 
-        // input handling thread
+        let now = Instant::now();
+        let mut last_tick = now;
+        let mut last_frame = now;
+
+        // Spawn input thread
         let input_tx = self.msg_tx.clone();
         thread::spawn(move || {
+            // This thread blocks safely on input and sends key events to main thread
             loop {
-                if crossterm::event::poll(Duration::from_millis(100)).unwrap_or(false)
-                    && let Ok(Event::Key(key)) = crossterm::event::read()
-                    && key.kind == KeyEventKind::Press
-                    && input_tx.send(Message::KeyPress(key.code)).is_err()
-                {
-                    break;
-                }
-            }
-        });
-
-        // tick thread
-        let tick_tx = self.msg_tx.clone();
-        thread::spawn(move || {
-            let mut last_tick = Instant::now();
-            loop {
-                thread::sleep(tick_duration);
-                if last_tick.elapsed() >= tick_duration {
-                    if tick_tx.send(Message::Tick).is_err() {
-                        break;
+                if let Ok(Event::Key(key)) = crossterm::event::read() {
+                    if key.kind == KeyEventKind::Press {
+                        if input_tx.send(Message::KeyPress(key.code)).is_err() {
+                            break; // main thread exited
+                        }
                     }
-                    last_tick = Instant::now();
-                }
-           
-            }
-        });
-
-        // render thread
-        let render_tx = self.msg_tx.clone();
-        thread::spawn(move || {
-            let mut last_frame = Instant::now();
-            loop {
-                thread::sleep(frame_duration); // sleep to yeild control back to os
-                if last_frame.elapsed() >= frame_duration {
-                    if render_tx.send(Message::Render).is_err() {
-                        break;
-                    }
-                    last_frame = Instant::now();
                 }
             }
         });
 
-        // Main loop
+        // main thread loop
         loop {
-            if let Ok(msg) = self.msg_rx.recv_timeout(Duration::from_millis(100)) {
+            // Handle incoming messages (non-blocking)
+            while let Ok(msg) = self.msg_rx.try_recv() {
                 match self.update(&msg)? {
-                    UpdateCommand::None => {}
-                    UpdateCommand::Quit => break,
+                    UpdateCommand::Quit => {
+                        self.exit()?;
+                        return Ok(());
+                    }
+                    _ => {}
                 }
             }
-        }
 
-        self.exit()?;
-        Ok(())
+            let now = Instant::now();
+
+            // Tick logic
+            if now >= last_tick + tick_duration {
+                self.update(&Message::Tick)?;
+                last_tick += tick_duration;
+            }
+
+            // Render frame
+            if now >= last_frame + frame_duration {
+                self.update(&Message::Render)?;
+                last_frame += frame_duration;
+            }
+            // sleep until next event, yield to CPU
+            let next_tick = last_tick + tick_duration;
+            let next_frame = last_frame + frame_duration;
+            let next_event = std::cmp::min(next_tick, next_frame);
+            let sleep_time = next_event.saturating_duration_since(Instant::now());
+
+            thread::sleep(sleep_time);
+        }
     }
 
     fn update(&mut self, message: &Message) -> MyResult<UpdateCommand> {
