@@ -17,8 +17,6 @@ I'm using an Elm style Model–Update–View (MUV) pattern, All the state lives 
 events are sent as `Message`s to an `Update()` function that mutates the `Model` which is rendered by `View()`
 
 ```rust
-use std::time::Instant;
-
 //src/tui.rs
 pub fn run(&mut self) -> MyResult<()> {
     self.enter()?;
