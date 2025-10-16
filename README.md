@@ -78,7 +78,6 @@ pub fn run(&mut self) -> MyResult<()> {
         thread::sleep(sleep_time);
     }
 }
-}
 ```
 
 The radar sweeps around and detects different types of objects (aircraft, ships, etc) that move around and fade out over time or are removed if out of range. Everything is purely simulated, no real data is used. 
